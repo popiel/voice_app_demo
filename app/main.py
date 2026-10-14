@@ -11,12 +11,25 @@ import html
 import json
 import os
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+)
 
 from . import db
-from .auth import require_auth
+from .auth import (
+    COOKIE_NAME,
+    check_token,
+    is_authenticated,
+    require_auth,
+    safe_next,
+    site_token,
+)
 from .submit import (
     ALLOWED_EXTS,
     create_job,
@@ -106,12 +119,68 @@ def license_block(job_id: str) -> str:
 def create_app() -> FastAPI:
     app = FastAPI(title="Voice demo (private)")
 
+    def browser_gate(request: Request):
+        """Redirect browsers to /login when unauthenticated (SITE-B-008)."""
+        if is_authenticated(request.headers.get("authorization"),
+                            request.cookies.get(COOKIE_NAME)):
+            return None
+        nxt = request.url.path
+        if request.url.query:
+            nxt += "?" + request.url.query
+        return RedirectResponse(f"/login?next={quote(nxt, safe='')}",
+                                status_code=303)
+
+    def login_form(next_target: str, error: bool = False) -> str:
+        err = ("<p class='reason'>Wrong token — try again.</p>" if error else "")
+        return (
+            "<h1>Private demo — sign in</h1>"
+            f"{err}"
+            "<form action='/login' method='post'>"
+            f"<input type='hidden' name='next' value='{html.escape(next_target)}'>"
+            "<p><label>Access token "
+            "<input type='password' name='token' autocomplete='current-password'>"
+            "</label></p>"
+            "<p><button type='submit'>Sign in</button></p>"
+            "</form>"
+        )
+
     @app.get("/healthz")
     async def healthz():
         return {"ok": True}
 
+    @app.get("/login", response_class=HTMLResponse)
+    async def login_page(request: Request, next: str = "/",
+                         error: str | None = None):
+        if is_authenticated(request.headers.get("authorization"),
+                            request.cookies.get(COOKIE_NAME)):
+            return RedirectResponse(safe_next(next), status_code=303)
+        return HTMLResponse(
+            page("Sign in", login_form(safe_next(next), error is not None)))
+
+    @app.post("/login")
+    async def login_submit(token: str = Form(default=""),
+                           next: str = Form(default="/")):
+        target = safe_next(next)
+        if check_token(token):
+            resp = RedirectResponse(target, status_code=303)
+            resp.set_cookie(COOKIE_NAME, site_token(), httponly=True,
+                            samesite="lax", path="/")
+            return resp
+        return HTMLResponse(page("Sign in", login_form(target, error=True)),
+                            status_code=401)
+
+    @app.get("/logout")
+    @app.post("/logout")
+    async def logout():
+        resp = RedirectResponse("/login", status_code=303)
+        resp.delete_cookie(COOKIE_NAME, path="/")
+        return resp
+
     @app.get("/", response_class=HTMLResponse)
-    async def index(_: None = Depends(require_auth)):
+    async def index(request: Request):
+        gate = browser_gate(request)
+        if gate is not None:
+            return gate
         con = db.connect()
         try:
             db.init_db(con)
@@ -145,11 +214,15 @@ def create_app() -> FastAPI:
             "<p><button type='submit'>Submit</button></p></form>"
             "<h2>All jobs (newest first)</h2>"
             f"<ul>{''.join(items) if items else '<li>no jobs yet</li>'}</ul>"
+            "<p><a href='/logout'>Sign out</a></p>"
         )
         return HTMLResponse(page("Episodes", body))
 
     @app.get("/episodes/{job_id}", response_class=HTMLResponse)
-    async def episode(job_id: str, _: None = Depends(require_auth)):
+    async def episode(request: Request, job_id: str):
+        gate = browser_gate(request)
+        if gate is not None:
+            return gate
         con = db.connect()
         try:
             db.init_db(con)
@@ -265,7 +338,10 @@ def create_app() -> FastAPI:
         return FileResponse(str(path), media_type=media_type)
 
     @app.get("/attribution")
-    async def attribution(_: None = Depends(require_auth)):
+    async def attribution(request: Request):
+        gate = browser_gate(request)
+        if gate is not None:
+            return gate
         path = db.storage_root() / "ATTRIBUTION.md"
         if not path.exists():
             return JSONResponse({"detail": "not found"}, status_code=404)

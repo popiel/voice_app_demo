@@ -96,8 +96,43 @@ def test_healthz_no_auth(client):
 
 
 def test_unauthenticated_denied(client):
-    assert client.get("/").status_code == 401  # SITE-AC-004
-    assert client.get("/episodes/done01").status_code == 401
+    # Page routes redirect browsers to the login prompt (SITE-B-008).
+    r = client.get("/", follow_redirects=False)
+    assert r.status_code == 303  # SITE-AC-004
+    assert r.headers["location"].startswith("/login?next=")
+    r = client.get("/episodes/done01", follow_redirects=False)
+    assert r.status_code == 303
+    # Machine routes keep 401 JSON (SITE-B-008).
+    assert client.get("/api/episodes/done01.json").status_code == 401
+    assert client.get("/media/done01/remixed").status_code == 401
+
+
+def test_login_round_trip(client):
+    # Login form is public (SITE-AC-007).
+    r = client.get("/login")
+    assert r.status_code == 200
+    assert "Access token" in r.text
+    # Wrong token: error, no access granted.
+    r = client.post("/login", data={"token": "nope", "next": "/"})
+    assert r.status_code == 401
+    assert "Wrong token" in r.text
+    assert client.get("/", follow_redirects=False).status_code == 303
+    # Correct token: cookie issued + redirect to next.
+    r = client.post("/login", data={"token": TOKEN, "next": "/episodes/done01"},
+                    follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/episodes/done01"
+    # Cookie now grants access without a Bearer header.
+    r = client.get("/")
+    assert r.status_code == 200
+    assert "Demo One" in r.text
+    # Open-redirect guard: absolute URLs fall back to /.
+    r = client.post("/login", data={"token": TOKEN, "next": "https://evil.example/"},
+                    follow_redirects=False)
+    assert r.headers["location"] == "/"
+    # Logout clears the cookie; access is denied again.
+    client.get("/logout", follow_redirects=False)
+    assert client.get("/", follow_redirects=False).status_code == 303
 
 
 def test_index_lists_newest_first_and_failed_reason(client):
