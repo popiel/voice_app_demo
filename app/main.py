@@ -423,13 +423,23 @@ def create_app() -> FastAPI:
             if isinstance(payload, dict) and payload.get("url"):
                 json_url = str(payload["url"])
         source_url = (url or json_url or "").strip()
+        browser = not request.headers.get("content-type", "").startswith(
+            "application/json")
         if file is not None and file.filename:
-            return await _submit_file(file)
+            return await _submit_file(file, browser)
         if source_url:
-            return await _submit_url(source_url)
+            return await _submit_url(source_url, browser)
         return JSONResponse({"detail": "provide a file or url"}, status_code=400)
 
-    async def _submit_file(file: UploadFile):
+    def _duplicate_response(job_id: str, browser: bool):
+        # DIS-B-005: API callers get the existing record (200 JSON);
+        # browser form posts redirect to the job's status page.
+        if browser:
+            return RedirectResponse(f"/episodes/{job_id}", status_code=303)
+        return JSONResponse({"job_id": job_id, "status": "duplicate"},
+                            status_code=200)
+
+    async def _submit_file(file: UploadFile, browser: bool):
         ext = Path(file.filename or "").suffix.lower()
         if ext not in ALLOWED_EXTS:
             return JSONResponse(
@@ -447,7 +457,7 @@ def create_app() -> FastAPI:
             db.init_db(con)
             dup = find_duplicate(con, digest, "")
             if dup:
-                return {"job_id": dup, "status": "duplicate"}
+                return _duplicate_response(dup, browser)
             job_id = create_job(con, trigger="manual", source_url="",
                                 local_path="", sha256=digest, status="pending")
         finally:
@@ -472,7 +482,7 @@ def create_app() -> FastAPI:
             con.close()
         return JSONResponse({"job_id": job_id, "status": "pending"}, status_code=202)
 
-    async def _submit_url(source_url: str):
+    async def _submit_url(source_url: str, browser: bool):
         if is_denied_url(source_url):
             return await _record_rejected(
                 source_url, "NPR sources are link-only in demo config (DIS-IN-004)")
@@ -481,7 +491,7 @@ def create_app() -> FastAPI:
             db.init_db(con)
             dup = find_duplicate(con, "", source_url)
             if dup:
-                return {"job_id": dup, "status": "duplicate"}
+                return _duplicate_response(dup, browser)
             job_id = create_job(con, trigger="manual", source_url=source_url,
                                 local_path="", sha256="", status="pending")
         finally:

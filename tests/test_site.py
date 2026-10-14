@@ -212,8 +212,40 @@ def test_submit_upload_and_duplicate(client, store):
     assert staged and staged[0].stat().st_size > 0
     r2 = client.post("/api/submit", files={"file": ("clip.mp3", FAKE_MP3,
                                                    "audio/mpeg")},
-                     headers=auth())
-    assert r2.json() == {"job_id": job_id, "status": "duplicate"}  # DIS-AC-002
+                     headers=auth(), follow_redirects=False)
+    # Browser form duplicate redirects to the existing job page (DIS-B-005).
+    assert r2.status_code == 303
+    assert r2.headers["location"] == f"/episodes/{job_id}"
+
+
+def test_submit_duplicate_browser_redirects(client, store):
+    # File duplicate via browser-style form post -> 303 to episode page.
+    files = {"file": ("clip.mp3", FAKE_MP3, "audio/mpeg")}
+    r = client.post("/api/submit", files=files, headers=auth())
+    job_id = r.json()["job_id"]
+    r2 = client.post("/api/submit", files={"file": ("clip.mp3", FAKE_MP3,
+                                                   "audio/mpeg")},
+                     headers=auth(), follow_redirects=False)
+    assert r2.status_code == 303  # DIS-B-005
+    assert r2.headers["location"] == f"/episodes/{job_id}"
+    # URL duplicate via browser-style urlencoded post -> same redirect.
+    url = "https://example.org/ep-form.mp3"
+    r3 = client.post("/api/submit", data={"url": url}, headers=auth())
+    assert r3.status_code == 202
+    r4 = client.post("/api/submit", data={"url": url}, headers=auth(),
+                     follow_redirects=False)
+    assert r4.status_code == 303
+    assert r4.headers["location"] == f"/episodes/{r3.json()['job_id']}"
+
+
+def test_submit_duplicate_api_returns_json(client):
+    # JSON API duplicate -> 200 with the existing record (DIS-B-005).
+    url = "https://example.org/ep-json.mp3"
+    r1 = client.post("/api/submit", json={"url": url}, headers=auth())
+    assert r1.status_code == 202
+    r2 = client.post("/api/submit", json={"url": url}, headers=auth())
+    assert r2.status_code == 200
+    assert r2.json() == {"job_id": r1.json()["job_id"], "status": "duplicate"}
 
 
 def test_submit_corrupt_rejected(client):
@@ -238,4 +270,4 @@ def test_submit_url_dedup(client):
     r1 = client.post("/api/submit", data={"url": url}, headers=auth())
     assert r1.status_code == 202
     r2 = client.post("/api/submit", json={"url": url}, headers=auth())
-    assert r2.json()["status"] == "duplicate"
+    assert r2.json()["status"] == "duplicate"  # DIS-AC-002
