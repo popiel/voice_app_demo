@@ -37,7 +37,8 @@ storage/
   * `jobs(id, trigger, source_url, local_path, sha256, status, reason,
     feed_id, guid, submitted_at, created_at, done_at)`
   * `episodes(job_id PK, title, duration_s, original_ref, remixed_path,
-    transcript_path, summary_path, mods_path)` — one row per `done` job.
+    transcript_path, summary_path, mods_path, processing_time_s)` — one row
+    per `done` job (`processing_time_s` from `AUD-B-010`).
   * `seen_episodes(guid PK, feed_id, enclosure_url, job_id?, seen_at)` —
     every feed item ever evaluated (downloaded, rejected, or failed),
     backing `DIS-B-002` hole-filling dedup.
@@ -74,7 +75,9 @@ storage/
   `<audio>` for remixed (`AUD-OUT-001`), link to original (`source_url`
   external from `DIS-IF-001` or `/media/{job_id}/original`), rendered
   `summary.md` (`AUD-OUT-003`), modifications table from `mods.json`
-  (`AUD-IF-001`: `type | start → end | detail`), link to transcript.
+  (`AUD-IF-001`: `type | start → end | detail`), link to transcript, and
+  processing-time statistics from `AUD-B-010` (total seconds plus seconds
+  per minute of audio; `—` when unrecorded).
 * **[SITE-B-004]** Routes `GET /media/{job_id}/{remixed|original}`:
   byte-range-capable audio streaming (`Accept-Ranges`), correct MIME.
   Small-file routes `GET /media/{job_id}/{transcript.txt|transcript.json|provenance}`
@@ -82,7 +85,9 @@ storage/
   for `.json` / `provenance`, plain text otherwise). `run.json` is never
   served.
 * **[SITE-B-005]** Route `GET /api/episodes/{job_id}.json`: machine-readable
-  `{title, duration_s, original_ref, remixed_url, summary, modifications[]}`.
+  `{title, duration_s, original_ref, remixed_url, summary, modifications[],
+  processing_time_s, processing_time_per_min}` (`processing_time_per_min`
+  is `processing_time_s` per 60 s of audio, 0 when `duration_s` is 0).
 * **[SITE-B-006]** Reuses `POST /api/submit` from Spec 1 (`DIS-B-001`; form
   lives on `/`).
 * **[SITE-B-007]** Rendering: server-side templates (no SPA framework). Times
@@ -136,3 +141,7 @@ storage/
   the login cookie and redirects to `next`; the cookie then grants access
   to `/` and episode pages; logout clears the cookie and access is denied
   again.
+* **[SITE-AC-008]** Episode page and episode JSON for a `done` job show total
+  processing time in seconds and processing time per minute of audio
+  (`SITE-B-003`, `SITE-B-005`); jobs without recorded timing show `—`
+  (page) and `0` (JSON) without error.

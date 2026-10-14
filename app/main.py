@@ -58,6 +58,29 @@ def fmt_time(s: float) -> str:
     return f"{m:02d}:{sec:04.1f} ({s:.1f}s)"
 
 
+def processing_stats(ep) -> tuple[float, float]:
+    """(total_s, per_min) from an episodes row; zeros when unrecorded."""
+    try:
+        keys = set(ep.keys()) if ep is not None else set()
+        total = float(ep["processing_time_s"]) \
+            if "processing_time_s" in keys else 0.0
+        dur = float(ep["duration_s"]) \
+            if "duration_s" in keys and ep["duration_s"] else 0.0
+    except (TypeError, ValueError):
+        return 0.0, 0.0
+    per_min = round(total / (dur / 60), 1) if dur > 0 and total > 0 else 0.0
+    return total, per_min
+
+
+def timing_html(ep) -> str:
+    """Processing-time section (SITE-B-003); graceful `—` when unrecorded."""
+    total, per_min = processing_stats(ep)
+    if total <= 0:
+        return "<p>—</p>"
+    return (f"<p>Total processing time: {total:.1f} s<br>"
+            f"Per minute of audio: {per_min:.1f} s/min</p>")
+
+
 def page(title: str, body: str) -> str:
     return (
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
@@ -303,6 +326,7 @@ def create_app() -> FastAPI:
         body = (
             f"<h1>{html.escape(title)}</h1>"
             f"<p>Status: {html.escape(status)}</p>"
+            f"<h2>Processing time</h2>{timing_html(ep)}"
             f"<h2>Remixed</h2>{player}"
             f"<h2>Original</h2><p>{original_html}</p>"
             f"<h2>Summary</h2>{summary_html}"
@@ -369,6 +393,7 @@ def create_app() -> FastAPI:
                 if (pdir / "mods.json").exists() else []
         except (OSError, ValueError):
             mods = []
+        total_s, per_min = processing_stats(ep)
         return {
             "title": (ep["title"] if ep and ep["title"] else job_id),
             "duration_s": float(ep["duration_s"]) if ep and ep["duration_s"] else 0.0,
@@ -377,6 +402,8 @@ def create_app() -> FastAPI:
             "remixed_url": f"/media/{job_id}/remixed",
             "summary": summary,
             "modifications": mods,
+            "processing_time_s": total_s,
+            "processing_time_per_min": per_min,
         }
 
     @app.post("/api/submit")

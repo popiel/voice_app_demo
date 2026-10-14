@@ -50,10 +50,11 @@ def store(tmp_path, monkeypatch):
     )
     con.execute(
         "INSERT INTO episodes(job_id, title, duration_s, original_ref,"
-        " remixed_path, transcript_path, summary_path, mods_path)"
-        " VALUES(?,?,?,?,?,?,?,?)",
+        " remixed_path, transcript_path, summary_path, mods_path,"
+        " processing_time_s)"
+        " VALUES(?,?,?,?,?,?,?,?,?)",
         ("done01", "Demo One", 60.0, "corpus:demo01", "remixed.mp3",
-         "transcript.txt", "summary.md", "mods.json"),
+         "transcript.txt", "summary.md", "mods.json", 90.0),
     )
     # failed job, no player (SITE-AC-002)
     con.execute(
@@ -155,6 +156,13 @@ def test_episode_done_shows_player_summary_mods(client):
     assert "00:12.4" in r.text  # mm:ss.t rendering (SITE-B-007)
 
 
+def test_processing_time_displayed(client):
+    r = client.get("/episodes/done01", headers=auth())
+    assert r.status_code == 200  # SITE-AC-008
+    assert "Total processing time: 90.0 s" in r.text
+    assert "Per minute of audio: 90.0 s/min" in r.text
+
+
 def test_episode_failed_shows_reason_no_player(client):
     r = client.get("/episodes/fail01", headers=auth())
     assert r.status_code == 200
@@ -179,6 +187,8 @@ def test_episode_json_contract(client):
     assert data["remixed_url"] == "/media/done01/remixed"
     assert "Full summary" in data["summary"]
     assert data["modifications"] == MODS
+    assert data["processing_time_s"] == 90.0  # SITE-B-005 / SITE-AC-008
+    assert data["processing_time_per_min"] == 90.0  # 90 s per 60 s audio
 
 
 def test_attribution_vctk_notice_no_npr_bytes(client, store):

@@ -56,14 +56,25 @@ def init_db(con: sqlite3.Connection | None = None) -> sqlite3.Connection:
           transcript_path TEXT NOT NULL DEFAULT '',
           summary_path TEXT NOT NULL DEFAULT '',
           mods_path TEXT NOT NULL DEFAULT '',
+          processing_time_s REAL NOT NULL DEFAULT 0,
           FOREIGN KEY(job_id) REFERENCES jobs(id)
         );
         """
     )
+    # Migrate pre-existing databases (new columns default 0 = unrecorded).
+    _ensure_columns(con, "episodes", {"processing_time_s": "REAL NOT NULL DEFAULT 0"})
     con.commit()
     if own:
         return con
     return con
+
+
+def _ensure_columns(con: sqlite3.Connection, table: str,
+                    columns: dict[str, str]) -> None:
+    existing = {r["name"] for r in con.execute(f"PRAGMA table_info({table})")}
+    for name, ddl in columns.items():
+        if name not in existing:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
 
 
 def now_iso() -> str:

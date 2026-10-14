@@ -12,7 +12,7 @@ cross-referencing (e.g. `AUD-OUT-001` is rendered by `SITE-B-003`).
 For each job, output a remixed stream where voice is always ≥ 2 dB above
 non-voice in their respective highest-energy frequencies (by attenuating
 non-voice, with 3 s smooth-step ramps in/out), plus an octave-down harmonic
-at 0.5x primary energy for 440–880 Hz-dominant voices with total voice-energy
+at 0.5x primary energy for 220–440 Hz-dominant voices with total voice-energy
 renormalization.
 
 ## 2. Inputs / outputs
@@ -58,9 +58,9 @@ renormalization.
     attenuated region so there are no jarring steps. Overlapping ramps merge.
   * Log each attenuated region as
     `{type: "attenuate-background", start, end, attenuation_db, ramp_s: 3}`.
-* **[AUD-B-005]** Harmonic (440–880 Hz rule):
+* **[AUD-B-005]** Harmonic (220–440 Hz rule):
   * Per voiced frame, estimate `f0` (`librosa.pyin`, `CREPE` fallback).
-  * If frame-dominant voice energy is in 440–880 Hz, synthesize
+  * If frame-dominant voice energy is in 220–440 Hz, synthesize
     `sine(f0/2)` with energy = 0.5 × primary-pitch energy, add to voice stem.
   * Renormalize: scale resulting voice frames so total voice energy equals
     pre-harmonic voice energy for that region (energy-preserving).
@@ -81,6 +81,11 @@ renormalization.
   job by setting `processing` before any DSP runs; on success `AUD-B-008`
   marks it `done`; on failure it marks `failed` with a `reason` string and
   writes no audio outputs. Only `done` jobs gain an `episodes` row.
+* **[AUD-B-010]** Processing-time statistics: the worker measures wall-clock
+  time with a monotonic clock from claim (`processing`) to finalize
+  (`done`/`failed`), stores `processing_time_s` on the `episodes` row (and
+  in `run.json` under `timing`), and derives processing time per minute of
+  audio as `processing_time_s / (duration_s / 60)` (0 when `duration_s` is 0).
 
 ## 4. `mods.json` contract (also read by Spec 3)
 
@@ -115,7 +120,7 @@ renormalization.
   `remixed.*`.
 * **[AUD-AC-002]** Attenuation edges show ~3 s continuous ramp
   (no step > 1 dB per 100 ms).
-* **[AUD-AC-003]** On the corpus 440–880 Hz fixture (`COR-S-003` item (c)), spectrum
+* **[AUD-AC-003]** On the corpus 220–440 Hz fixture (`COR-S-003` item (c)), spectrum
   shows `f0/2` component at ~0.5x primary energy pre-renorm, and voice-region
   total energy matches original within ±5%.
 * **[AUD-AC-004]** `mods.json` entries cover every applied DSP region with
@@ -126,3 +131,5 @@ renormalization.
   first model download).
 * **[AUD-AC-007]** No NPR bytes processed: all test fixtures are corpus clips
   satisfying `COR-AC-001`/`COR-AC-004`.
+* **[AUD-AC-008]** Every `done` job's `episodes` row carries `processing_time_s`
+  greater than 0 and `run.json` contains a matching `timing` block.
