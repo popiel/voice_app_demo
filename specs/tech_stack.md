@@ -3,7 +3,7 @@
 Source requirements: `README.md` — rebalance + pitch-shift voice vs. background
 in podcast streams, enforce voice +2 dB in highest-energy frequencies with 3 s
 smooth-step attenuation, add -1 octave harmonic at 0.5x energy for voices
-dominant in 440–880 Hz with total-energy renormalization, publish private
+dominant in 220–440 Hz with total-energy renormalization, publish private
 site with original link + full-stream summary + modification log with timestamps.
 
 Constraint: all components must be perpetually free / OSS. No commercial
@@ -29,7 +29,7 @@ no NPR bytes are downloaded, modified, or served.
   Exclude all `Non-PD US`, `NC`, `ND`, `SA` items. Composition-PD alone
   is insufficient.
 * Synthesis: `corpus/{clip_id}.wav + provenance.json + ATTRIBUTION.md`,
-  deterministic mixes at known SNRs incl. a 440–880 Hz fixture
+  deterministic mixes at known SNRs incl. a 220–440 Hz fixture
   (see `COR-S-001`–`COR-S-005`).
 
 ## 1. Ingest (stream submission + podcast discovery)
@@ -74,11 +74,11 @@ Decision: `Silero VAD` for control + `Demucs` for music podcasts /
   measurement, +2 dB enforcement, 3 s raised-cosine (`1-cos`) ramps,
   additive harmonic synthesis, RMS/total-energy renormalization.
 * `librosa` (ISC) — `stft`, `pyin`, effects, band analysis. Used for
-  440–880 Hz dominance test and `f0` estimation.
+  220–440 Hz dominance test and `f0` estimation.
 * `CREPE` (MIT) — alternative `f0` estimator if `pyin` is too noisy.
 * Transcription alignment: `WhisperX` (BSD) for word timestamps.
 
-Harmonic recipe: `f0 = pyin` → if dominant `f0` in 440–880 Hz, synth
+Harmonic recipe: `f0 = pyin` → if dominant `f0` in 220–440 Hz, synth
 `sine(f0/2)` at 0.5x primary harmonic energy → mix into voice stem →
 rescale voice stem to original total energy.
 

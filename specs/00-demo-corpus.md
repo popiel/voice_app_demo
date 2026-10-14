@@ -13,7 +13,7 @@ cross-referencing (consumed by `DIS-`, `AUD-`, `SITE-` specs).
 
 Provide a small, reproducible, legally remixable demo set that exercises
 every README behavior: voice + music/noise mixes at known SNRs (to trigger
-the ≥ 2 dB attenuation rule), 3 s ramp audibility, 440–880 Hz-dominant
+the ≥ 2 dB attenuation rule), 3 s ramp audibility, 220–440 Hz-dominant
 voices (to trigger the octave-down harmonic), and full-length transcripts
 for the summary feature.
 
@@ -87,8 +87,8 @@ eligible ONLY if both are clear in the US:
 * **[COR-S-003]** Mix fixtures at known SNRs (e.g. voice+music at 0 dB and
   −5 dB voice-relative; voice+CC0 noise at 5 dB) with deterministic seeds.
   Include: (a) music-bed fixture for `AUD-B-004`; (b) noise fixture for
-  `AUD-B-003` DeepFilterNet path; (c) 440–880 Hz-dominant voice fixture
-  (high-pitched speakers and/or calibrated validation tone) for `AUD-B-005`.
+  `AUD-B-003` DeepFilterNet path; (c) 220–440 Hz-dominant voice material
+  (adult narration fundamentals fall here; see `COR-AC-002`).
 * **[COR-S-004]** Provenance: every clip ships with `provenance.json`
   `{clip_id, voice_src{url,license}, music_or_noise_src{url,license},
   mix_snr_db, seed, f0_range_hz}` plus a human-readable `ATTRIBUTION.md`.
@@ -119,7 +119,7 @@ eligible ONLY if both are clear in the US:
   `ODC-By 1.0`, Apache-2.0, BSD, MIT/ISC/Unlicense. No `BY-SA/BY-NC/BY-ND`,
   `ODbL`, `DBCL`, or `Non-PD US` entries exist.
 * **[COR-AC-002]** Fixtures cover: music-bed mix, noise mix, and
-  440–880 Hz-dominant voice mix, each ≥ 30 s with at least one 3 s
+  220–440 Hz-dominant voice mix, each ≥ 30 s with at least one 3 s
   ramp-exercising transition.
 * **[COR-AC-003]** Re-running the generator with the same seed reproduces
   bit-identical mixes (or documents the nondeterminism source).
