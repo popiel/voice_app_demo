@@ -69,18 +69,23 @@ def per_min_rate(processing_time_s: float, duration_s: float) -> float:
     return round(processing_time_s / (duration_s / 60), 1)
 
 
+def _torch_threads() -> int:
+    """Torch intra-op pool size for run.json diagnostics (may be 0)."""
+    try:
+        import torch
+        return int(torch.get_num_threads())
+    except ImportError:
+        return 0
+
+
 def voiced_mask(segments: list[Segment], n_frames: int, n_fft: int,
                 hop: int) -> list[bool]:
     import numpy as np  # local import: keeps module import light
-    centers = (np.arange(n_frames) * hop + n_fft / 2)
-    mask = [False] * n_frames
-    for i, c in enumerate(centers):
-        t = c  # samples; converted below
-        for s in segments:
-            if s.start * 48000 <= t <= s.end * 48000:
-                mask[i] = True
-                break
-    return mask
+    centers = np.arange(n_frames) * hop + n_fft / 2  # samples @48 kHz
+    mask = np.zeros(n_frames, dtype=bool)
+    for s in segments:
+        mask |= (centers >= s.start * 48000) & (centers <= s.end * 48000)
+    return mask.tolist()
 
 
 def process_job(job_id: str, cfg: PipelineConfig | None = None) -> dict:
@@ -101,6 +106,7 @@ def process_job(job_id: str, cfg: PipelineConfig | None = None) -> dict:
                  "config": cfg.to_dict(), "stages": {}}
     try:
         # --- Provenance gate (AUD-IN-002, only for corpus/demo jobs).
+        t_provenance = time.monotonic()
         clip = None
         if (job["trigger"] or "") == "corpus":
             clip = find_clip_provenance(job["local_path"] or "")
@@ -111,13 +117,18 @@ def process_job(job_id: str, cfg: PipelineConfig | None = None) -> dict:
                 raise ValueError(reason)
             run["stages"]["provenance"] = {"method": "corpus-allowlist",
                                            "clip": clip.get("file")}
+            run["stages"]["provenance"]["elapsed_s"] = \
+                round(time.monotonic() - t_provenance, 1)
         # --- AUD-B-001 decode.
+        t_decode = time.monotonic()
         work = pdir / "work_decode.wav"
         dec = ffmpeg_io.decode_to_wav(job["local_path"], work, cfg.sample_rate)
         x = ffmpeg_io.load_mono_wav(work, cfg.sample_rate)
         duration_s = len(x) / cfg.sample_rate
         run["stages"]["decode"] = {"duration_s": round(duration_s, 2)}
+        run["stages"]["decode"]["elapsed_s"] = round(time.monotonic() - t_decode, 1)
         # --- AUD-B-002 VAD.
+        t_vad = time.monotonic()
         vad_impl = vad.make_vad(cfg.vad, cfg.sample_rate)
         try:
             segments = vad_impl.segments(x)
@@ -128,7 +139,9 @@ def process_job(job_id: str, cfg: PipelineConfig | None = None) -> dict:
             vad_method = fb.method + f" (silero unavailable: {e})"
         run["stages"]["vad"] = {"method": vad_method,
                                 "n_segments": len(segments)}
+        run["stages"]["vad"]["elapsed_s"] = round(time.monotonic() - t_vad, 1)
         # --- AUD-B-003 separate.
+        t_separate = time.monotonic()
         sep_impl = separate.make_separator(cfg.separator)
         try:
             voice, bg, sep_method = sep_impl.separate(x, cfg.sample_rate)
@@ -137,31 +150,44 @@ def process_job(job_id: str, cfg: PipelineConfig | None = None) -> dict:
             voice, bg, _ = fb.separate(x, cfg.sample_rate)
             sep_method = fb.method + f" (requested {cfg.separator} unavailable: {e})"
         run["stages"]["separate"] = {"method": sep_method}
+        run["stages"]["separate"]["elapsed_s"] = round(time.monotonic() - t_separate, 1)
+        run["stages"]["separate"]["torch_threads"] = separate.torch_threads()
         ffmpeg_io.write_wav(pdir / "voice.wav", voice, cfg.sample_rate)
         ffmpeg_io.write_wav(pdir / "background.wav", bg, cfg.sample_rate)
         # --- AUD-B-004 rebalance (voiced frames only).
+        t_rebalance = time.monotonic()
         import numpy as np  # noqa: E402
         n_f = 1 + max(0, (len(voice) - cfg.n_fft) // cfg.hop)
         vmask = voiced_mask(segments, n_f, cfg.n_fft, cfg.hop)
         bg_proc, att_events = rebalance.attenuate_background(
             voice, bg, cfg.sample_rate, cfg.n_fft, cfg.hop, cfg.db_margin,
             cfg.ramp_s, np.array(vmask))
+        run["stages"]["rebalance"] = {
+            "attenuate_events": len(att_events),
+            "elapsed_s": round(time.monotonic() - t_rebalance, 1)}
         # --- AUD-B-005 harmonic (voice-level trigger, whole-voice application).
+        t_harmonic = time.monotonic()
         voice_proc, harm_events = harmonic.add_octave_harmonic(
             voice, cfg.sample_rate, cfg.n_fft, cfg.hop, cfg.band_lo_hz,
             cfg.band_hi_hz, cfg.harmonic_ratio,
             trigger_fraction=cfg.trigger_fraction)
+        run["stages"]["harmonic"] = {
+            "harmonic_events": len(harm_events),
+            "elapsed_s": round(time.monotonic() - t_harmonic, 1)}
         # --- AUD-B-006 remix + encode.
+        t_remix = time.monotonic()
         mix = remix.remix(voice_proc, bg_proc, cfg.peak_limit)
         if abs(len(mix) / cfg.sample_rate - duration_s) > 0.05:
             raise ValueError("remix duration drift exceeds 50 ms (AUD-OUT-001)")
         remix.write_remix(mix, cfg.sample_rate, pdir)
         peak = float(np.abs(mix).max())
         run["stages"]["remix"] = {"peak": round(peak, 4)}
+        run["stages"]["remix"]["elapsed_s"] = round(time.monotonic() - t_remix, 1)
         # --- AUD-B-007 transcribe + summarize (record source used).
         # Non-fatal: ASR/LLM failures degrade to honest placeholders so the
         # DSP outputs + mods.json are still finalized (AUD-B-008).
         stem_for_asr = "voice"
+        t_transcribe = time.monotonic()
         try:
             asr = transcribe.faster_whisper_transcribe(
                 str(pdir / "voice.wav"), str(pdir))
@@ -172,6 +198,8 @@ def process_job(job_id: str, cfg: PipelineConfig | None = None) -> dict:
                 pdir, duration_s, stem_for_asr,
                 f"faster-whisper failed: {e}")
             run["stages"]["transcribe"] = {"source": stem_for_asr, **fb}
+        run["stages"]["transcribe"]["elapsed_s"] = round(time.monotonic() - t_transcribe, 1)
+        t_summarize = time.monotonic()
         if (pdir / "transcript.txt").exists():
             text = (pdir / "transcript.txt").read_text(encoding="utf-8")
             try:
@@ -187,6 +215,7 @@ def process_job(job_id: str, cfg: PipelineConfig | None = None) -> dict:
                     fb = transcribe.write_pending_summary(pdir, duration_s, str(e2))
                     run["stages"]["summarize"] = fb
         # --- AUD-B-008 finalize: mods.json (union, sorted), run.json.
+        t_finalize = time.monotonic()
         mods = sorted(att_events + harm_events, key=lambda m: m["start"])
         (pdir / "mods.json").write_text(json.dumps(mods, indent=2),
                                         encoding="utf-8")
@@ -205,6 +234,12 @@ def process_job(job_id: str, cfg: PipelineConfig | None = None) -> dict:
             "duration_s": round(duration_s, 1),
             "processing_time_per_min": per_min_rate(processing_time_s,
                                                    duration_s),
+            "torch_threads": _torch_threads(),
+            "stage_elapsed_s": {
+                name: (stage.get("elapsed_s", 0.0)
+                       if isinstance(stage, dict) else 0.0)
+                for name, stage in run["stages"].items()
+            },
         }
         (pdir / "run.json").write_text(json.dumps(run, indent=2),
                                        encoding="utf-8")
@@ -224,6 +259,12 @@ def process_job(job_id: str, cfg: PipelineConfig | None = None) -> dict:
         con.execute("UPDATE jobs SET status='done', done_at=? WHERE id=?",
                     (db.now_iso(), job_id))
         con.commit()
+        run["stages"]["finalize"] = {
+            "elapsed_s": round(time.monotonic() - t_finalize, 1)}
+        run["timing"]["stage_elapsed_s"]["finalize"] = \
+            run["stages"]["finalize"]["elapsed_s"]
+        (pdir / "run.json").write_text(json.dumps(run, indent=2),
+                                       encoding="utf-8")
     except Exception as e:
         run["status"] = "failed"
         run["error"] = f"{type(e).__name__}: {e}"

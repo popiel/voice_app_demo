@@ -45,7 +45,9 @@ renormalization.
 * **[AUD-B-003]** Separation: split into `voice` and `background` stems.
   * Music-heavy: `Demucs htdemucs` family, voice = `vocals` stem.
     Default `htdemucs` (single model) on CPU; `htdemucs_ft` (4x ensemble)
-    reserved for GPU runs. Record `method` used.
+    reserved for GPU runs. CPU inference sizes the torch thread pool to all
+    CPUs (`TORCH_THREADS` overrides); the pool size is recorded in
+    `run.json`. Record `method` used.
   * Noise-only: `DeepFilterNet2` enhancement (voice = enhanced, background =
     residual `source − voice`).
   * `RNNoise` allowed only as documented fallback. Record `method` used.
@@ -93,6 +95,8 @@ renormalization.
   (`done`/`failed`), stores `processing_time_s` on the `episodes` row (and
   in `run.json` under `timing`), and derives processing time per minute of
   audio as `processing_time_s / (duration_s / 60)` (0 when `duration_s` is 0).
+  Each `run.json` stage entry also carries its own `elapsed_s`, mirrored in
+  `timing.stage_elapsed_s`, for bottleneck analysis.
 
 ## 4. `mods.json` contract (also read by Spec 3)
 

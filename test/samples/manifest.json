@@ -1,0 +1,69 @@
+[
+  {
+    "file": "sample_01.wav",
+    "duration_s": 564.0,
+    "sample_rate_hz": 48000,
+    "channels": 1,
+    "bursts": [
+      {
+        "start": 60,
+        "end": 120
+      },
+      {
+        "start": 240,
+        "end": 300
+      },
+      {
+        "start": 420,
+        "end": 480
+      }
+    ],
+    "burst_music_snr_db_vs_voice": 0.0
+  },
+  {
+    "file": "sample_02.wav",
+    "duration_s": 571.5,
+    "sample_rate_hz": 48000,
+    "channels": 1,
+    "bursts": [
+      {
+        "start": 30,
+        "end": 75
+      },
+      {
+        "start": 200,
+        "end": 260
+      },
+      {
+        "start": 380,
+        "end": 440
+      },
+      {
+        "start": 500,
+        "end": 545
+      }
+    ],
+    "burst_music_snr_db_vs_voice": 2.0
+  },
+  {
+    "file": "sample_03.wav",
+    "duration_s": 520.5,
+    "sample_rate_hz": 48000,
+    "channels": 1,
+    "bursts": [
+      {
+        "start": 90,
+        "end": 150
+      },
+      {
+        "start": 300,
+        "end": 360
+      },
+      {
+        "start": 450,
+        "end": 500
+      }
+    ],
+    "burst_music_snr_db_vs_voice": -2.0
+  }
+]

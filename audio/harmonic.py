@@ -32,13 +32,15 @@ def estimate_f0_frame(frame: np.ndarray, sr: int,
     ac = ac / ac[0]
     lo = max(1, int(sr / fmax))
     hi = min(n - 2, int(sr / fmin))
-    # Cumulative-mean-normalized difference (YIN): full curve first, then
-    # the first sub-threshold dip, walking forward to its local minimum.
+    # Cumulative-mean-normalized difference (YIN): same sequential math as
+    # the scalar loop, computed as one vector op instead of ~750 Python
+    # iterations. Then the first sub-threshold dip, walking forward to its
+    # local minimum.
     cmn = np.ones(hi + 1)
-    run = 0.0
-    for tau in range(lo, hi + 1):
-        run += (1 - ac[tau])
-        cmn[tau] = (1 - ac[tau]) * (tau - lo + 1) / max(run, 1e-12)
+    if hi >= lo:
+        d = 1.0 - ac[lo:hi + 1]
+        run = np.cumsum(d)
+        cmn[lo:hi + 1] = d * np.arange(1, hi - lo + 2) / np.maximum(run, 1e-12)
     best = -1
     for tau in range(lo, hi + 1):
         if cmn[tau] < thresh:
