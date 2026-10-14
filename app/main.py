@@ -89,7 +89,8 @@ def page(title: str, body: str) -> str:
         "<style>body{font-family:sans-serif;max-width:60rem;margin:2rem auto;"
         "padding:0 1rem}table{border-collapse:collapse;width:100%}"
         "th,td{border:1px solid #999;padding:.3rem .5rem;text-align:left}"
-        ".reason{background:#fee;padding:.5rem}</style></head><body>"
+        ".reason{background:#fee;padding:.5rem}"
+        "pre{white-space:pre-wrap;word-wrap:break-word;max-width:100%}</style></head><body>"
         f"{body}</body></html>"
     )
 
