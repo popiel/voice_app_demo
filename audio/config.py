@@ -16,7 +16,7 @@ class PipelineConfig:
     band_lo_hz: float = 220.0
     band_hi_hz: float = 440.0
     harmonic_ratio: float = 0.5       # harmonic energy = 0.5 x primary energy
-    band_dominance: float = 0.5       # band energy / total voice energy to qualify
+    trigger_fraction: float = 0.03  # AUD-B-005: >3% frames with f0 in band
     # Component selection; values recorded in run.json ("passthrough" and
     # "energy-fallback"/"unavailable" are honest stand-ins, see modules).
     vad: str = "silero-v6"             # or "energy-fallback"

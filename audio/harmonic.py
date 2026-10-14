@@ -1,17 +1,19 @@
-"""Octave-down harmonic for 220-440 Hz-dominant voices (AUD-B-005).
+"""Octave-down harmonic for 220-440 Hz voices, voice-level trigger (AUD-B-005).
 
-Per voiced frame: estimate f0 (autocorrelation + parabolic interpolation),
-test whether voice energy is dominant in [band_lo, band_hi], and if so
-synthesize sin(f0/2) with HALF the primary (fundamental) energy. Phase is
-continuous across each region; regions get short raised-cosine edges; each
-region is then renormalized so total voice energy equals the pre-harmonic
-energy. Returns processed voice plus AUD-IF-001 `octave-harmonic` events.
+Rule: if more than `trigger_fraction` (default 3%) of ALL frames have a
+periodic f0 inside [band_lo, band_hi], the voice counts as in-band and EVERY
+frame with a valid periodic f0 gets an f0/2 harmonic at `harmonic_ratio`
+(default 0.5x) primary energy -- consistently across the whole recording so
+there are no tonal shifts between modified/unmodified passages. Frames
+without a valid f0 (silence, unvoiced) are untouched: there is no pitch to
+build a harmonic from, and inventing one would inject tones into pauses.
+The whole processed voice is renormalized to the original total energy.
 """
 from __future__ import annotations
 
 import numpy as np
 
-from .dsp import raised_cosine, stft, upsample_envelope
+from .dsp import raised_cosine, upsample_envelope
 
 
 def estimate_f0_frame(frame: np.ndarray, sr: int,
@@ -73,93 +75,62 @@ def add_octave_harmonic(voice: np.ndarray, sr: int = 48000,
                         n_fft: int = 4096, hop: int = 2048,
                         band_lo: float = 220.0, band_hi: float = 440.0,
                         harmonic_ratio: float = 0.5,
-                        dominance: float = 0.5,
-                        voiced: np.ndarray | None = None,
-                        min_region_s: float = 0.3,
+                        trigger_fraction: float = 0.03,
+                        periodicity_min: float = 0.3,
                         ) -> tuple[np.ndarray, list[dict]]:
-    """Apply AUD-B-005. Returns (voice_processed, events)."""
-    voice = np.asarray(voice, dtype=np.float64)
-    spec = np.abs(stft(voice, n_fft, hop))
-    freqs = np.fft.rfftfreq(n_fft, 1 / sr)
-    band = (freqs >= band_lo) & (freqs <= band_hi)
-    total = spec ** 2
-    band_e = total[:, band].sum(axis=1)
-    tot_e = total.sum(axis=1) + 1e-12
-    dom = (band_e / tot_e) >= dominance
+    """Apply AUD-B-005. Returns (voice_processed, events).
 
-    n_frames = spec.shape[0]
-    if voiced is None:
-        vmask = np.ones(n_frames, dtype=bool)
-    else:
-        vmask = np.asarray(voiced, dtype=bool)
-        if len(vmask) != n_frames:
-            vmask = np.ones(n_frames, dtype=bool)
+    A single whole-recording event (or none) is ever emitted.
+    """
+    voice = np.asarray(voice, dtype=np.float64)
+    n_frames = 1 + max(0, (len(voice) - n_fft) // hop)
 
     f0s = np.zeros(n_frames)
     amps = np.zeros(n_frames)
+    pers = np.zeros(n_frames)
     w = np.hanning(n_fft)
     for i in range(n_frames):
-        if not (dom[i] and vmask[i]):
-            continue
         s = i * hop
         frame = voice[s:s + n_fft]
         if len(frame) < n_fft:
             frame = np.pad(frame, (0, n_fft - len(frame)))
         f0, per = estimate_f0_frame(frame * w, sr)
-        if f0 >= band_lo and f0 <= band_hi and per >= 0.3:
+        if f0 > 0 and per >= periodicity_min:
             f0s[i] = f0
+            pers[i] = per
             amps[i] = fundamental_amplitude(frame, sr, f0)
 
-    qual = f0s > 0
-    harm = np.zeros(len(voice))
-    if np.any(qual):
-        # Per-sample f0/amplitude tracks, phase-continuous synthesis.
-        f0_s = upsample_envelope(f0s, len(voice), hop, n_fft)
-        a_s = upsample_envelope(amps, len(voice), hop, n_fft)
-        # Zero amplitude where no qualifying neighbor frames exist.
-        mask = upsample_envelope(qual.astype(float), len(voice), hop, n_fft) > 0.25
-        phase = np.cumsum(2 * np.pi * f0_s / 2 / sr)
-        harm_seg = (a_s / np.sqrt(2)) * np.sin(phase) * mask
-        harm = harm_seg
+    inband = (f0s >= band_lo) & (f0s <= band_hi)
+    fraction = float(inband.sum()) / max(n_frames, 1)
+    if fraction <= trigger_fraction:
+        return voice.copy(), []
 
+    # Triggered: harmonic on every frame with a valid f0 (any frequency),
+    # phase-continuous across the whole voice.
+    valid = f0s > 0
+    f0_s = upsample_envelope(f0s, len(voice), hop, n_fft)
+    a_s = upsample_envelope(amps, len(voice), hop, n_fft)
+    vmask = upsample_envelope(valid.astype(float), len(voice), hop, n_fft) > 0.25
+    phase = np.cumsum(2 * np.pi * f0_s / 2 / sr)
+    harm = (a_s / np.sqrt(2)) * np.sin(phase) * vmask
+    # Click guard at file edges on the ADDED harmonic only.
+    edge = max(1, int(0.01 * sr))
+    if len(harm) > 2 * edge:
+        r = raised_cosine(edge)
+        harm[:edge] *= r
+        harm[-edge:] *= r[::-1]
     out = voice + harm
-    events: list[dict] = []
-    if np.any(qual):
-        idx = np.flatnonzero(qual)
-        s = p = idx[0]
-        frame_s = hop / sr
-        center = n_fft / 2 / sr
-        edge = max(1, int(0.01 * sr))  # 10 ms temp edges before renorm accounting
-        blocks = []
-        for i in idx[1:]:
-            if i == p + 1:
-                p = i
-            else:
-                blocks.append((s, p))
-                s = p = i
-        blocks.append((s, p))
-        for (a, b) in blocks:
-            i0 = int(a * hop + n_fft / 2)
-            i1 = min(len(out), int(b * hop + n_fft / 2))
-            if (i1 - i0) / sr < min_region_s:
-                continue  # ignore sub-threshold estimation blips
-            if i1 - i0 < edge * 2 + 1:
-                continue
-            # Short edge fade on the ADDED harmonic only, then renormalize.
-            add = out[i0:i1] - voice[i0:i1]
-            r = raised_cosine(edge)
-            add[:edge] *= r
-            add[-edge:] *= r[::-1]
-            orig_e = float(np.sum(voice[i0:i1] ** 2))
-            new_e = float(np.sum((voice[i0:i1] + add) ** 2))
-            scale = np.sqrt(orig_e / new_e) if new_e > 0 else 1.0
-            # Energy-preserving: scale voice+harmonic so region energy is unchanged.
-            out[i0:i1] = (voice[i0:i1] + add) * scale
-            fmean = float(f0s[a:b + 1][f0s[a:b + 1] > 0].mean())
-            events.append({
-                "type": "octave-harmonic",
-                "start": round(i0 / sr, 1), "end": round(i1 / sr, 1),
-                "f0_mean_hz": round(fmean, 1),
-                "harmonic_ratio": harmonic_ratio,
-            })
-    return out, events
+    # Whole-voice renormalization (README: same total energy as original).
+    orig_e = float(np.sum(voice ** 2))
+    new_e = float(np.sum(out ** 2))
+    if new_e > 0:
+        out = out * np.sqrt(orig_e / new_e)
+    dur = round(len(voice) / sr, 1)
+    fmean = float(f0s[inband].mean())
+    return out, [{
+        "type": "octave-harmonic",
+        "start": 0.0, "end": dur,
+        "f0_mean_hz": round(fmean, 1),
+        "harmonic_ratio": harmonic_ratio,
+        "trigger_fraction": round(fraction, 4),
+    }]

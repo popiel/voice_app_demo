@@ -58,14 +58,21 @@ renormalization.
     attenuated region so there are no jarring steps. Overlapping ramps merge.
   * Log each attenuated region as
     `{type: "attenuate-background", start, end, attenuation_db, ramp_s: 3}`.
-* **[AUD-B-005]** Harmonic (220–440 Hz rule):
-  * Per voiced frame, estimate `f0` (`librosa.pyin`, `CREPE` fallback).
-  * If frame-dominant voice energy is in 220–440 Hz, synthesize
-    `sine(f0/2)` with energy = 0.5 × primary-pitch energy, add to voice stem.
-  * Renormalize: scale resulting voice frames so total voice energy equals
-    pre-harmonic voice energy for that region (energy-preserving).
-  * Log each region as
-    `{type: "octave-harmonic", start, end, f0_mean_hz, harmonic_ratio: 0.5}`.
+* **[AUD-B-005]** Harmonic (220–440 Hz rule, voice-level trigger):
+  * Per frame, estimate `f0` and periodicity (autocorrelation;
+    `librosa.pyin` / `CREPE` allowed as estimators).
+  * Count frames with a periodic `f0` inside 220–440 Hz. If MORE than 3%
+    of ALL frames qualify, the voice triggers: EVERY frame with a valid
+    periodic `f0` (any frequency) gets a phase-continuous `sine(f0/2)`
+    harmonic at 0.5x primary energy — consistently across the entire
+    recording, so the voice never shifts character mid-stream. Frames
+    without a valid `f0` (silence, unvoiced) are untouched.
+  * Renormalize: scale the whole processed voice so its total energy equals
+    the original voice total (energy-preserving).
+  * Log a SINGLE whole-recording event as
+    `{type: "octave-harmonic", start: 0.0, end: duration,
+    f0_mean_hz, harmonic_ratio: 0.5, trigger_fraction}`.
+    Below threshold: voice bit-identical, no events.
 * **[AUD-B-006]** Remix: `voice_processed + background_processed` →
   `ffmpeg loudnorm`, encode. Verify duration and no clipping
   (peak < 0 dBFS or limiter applied).
@@ -120,9 +127,10 @@ renormalization.
   `remixed.*`.
 * **[AUD-AC-002]** Attenuation edges show ~3 s continuous ramp
   (no step > 1 dB per 100 ms).
-* **[AUD-AC-003]** On the corpus 220–440 Hz fixture (`COR-S-003` item (c)), spectrum
-  shows `f0/2` component at ~0.5x primary energy pre-renorm, and voice-region
-  total energy matches original within ±5%.
+* **[AUD-AC-003]** On a voice with >3% in-band frames: exactly one
+  whole-recording `octave-harmonic` event; spectrum shows `f0/2`
+  components; total voice energy matches original within ±5%. On a
+  below-threshold voice: no events and bit-identical voice.
 * **[AUD-AC-004]** `mods.json` entries cover every applied DSP region with
   start/end; unmodified regions have no entries.
 * **[AUD-AC-005]** `summary.md` + transcript exist and correspond to full

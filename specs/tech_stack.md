@@ -78,9 +78,10 @@ Decision: `Silero VAD` for control + `Demucs` for music podcasts /
 * `CREPE` (MIT) — alternative `f0` estimator if `pyin` is too noisy.
 * Transcription alignment: `WhisperX` (BSD) for word timestamps.
 
-Harmonic recipe: `f0 = pyin` → if dominant `f0` in 220–440 Hz, synth
-`sine(f0/2)` at 0.5x primary harmonic energy → mix into voice stem →
-rescale voice stem to original total energy.
+Harmonic recipe: voice-level trigger — if >3% of frames have periodic
+`f0` in 220–440 Hz, add phase-continuous `sine(f0/2)` at 0.5x primary energy
+to every voiced frame across the whole recording → renormalize whole voice
+to original total energy.
 
 Avoid for this demo: `Spotify pedalboard` (GPLv3), `Essentia` (AGPLv3),
 `Rubber Band library` (GPL) — copyleft taint if distributed; use `ffmpeg`

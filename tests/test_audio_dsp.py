@@ -59,21 +59,22 @@ def test_rebalance_silent_background_is_noop():
     assert events == []
     assert np.allclose(bg_proc, 0.0)
 
-def test_harmonic_adds_f0_over_2_and_preserves_energy():
-    # 330 Hz voice (inside 220-440 band), 4 s.
+def test_harmonic_triggers_globally_above_threshold():
+    # 330 Hz voice (inside 220-440 band) for the whole file: trigger fires,
+    # single whole-recording event, global energy preserved.
     voice = tone(330, 4.0, amp=0.4)
     out, events = harmonic.add_octave_harmonic(voice, SR)
-    assert len(events) >= 1
+    assert len(events) == 1
     e = events[0]
     assert e["type"] == "octave-harmonic" and e["harmonic_ratio"] == 0.5
     assert 220 <= e["f0_mean_hz"] <= 440
-    # Energy preserved within +-5% over the event region.
-    i0, i1 = int(e["start"] * SR), int(e["end"] * SR)
-    ratio = (out[i0:i1] ** 2).sum() / (voice[i0:i1] ** 2).sum()
+    assert e["start"] == 0.0 and e["end"] == round(len(voice) / SR, 1)
+    assert e["trigger_fraction"] > 0.03
+    ratio = (out ** 2).sum() / (voice ** 2).sum()
     assert 0.95 <= ratio <= 1.05, ratio
-    # f0/2 component present: project output region onto 165 Hz.
-    t = np.arange(i1 - i0) / SR
-    proj = abs(np.mean(out[i0:i1] * np.exp(-2j * np.pi * 165 * t)))
+    # f0/2 component present: project output onto 165 Hz.
+    t = np.arange(len(out)) / SR
+    proj = abs(np.mean(out * np.exp(-2j * np.pi * 165 * t)))
     assert proj > 0.01, proj
 
 
@@ -84,10 +85,13 @@ def test_harmonic_ignores_out_of_band_voice():
     assert np.allclose(out, voice)
 
 
-def test_harmonic_ignores_sub_threshold_blips():
-    # 0.15 s in-band blip inside silence: too short for an event.
-    voice = np.zeros(2 * SR)
-    t = np.arange(int(0.15 * SR)) / SR
-    voice[SR:SR + len(t)] = 0.4 * np.sin(2 * np.pi * 330 * t)
+def test_harmonic_ignores_sub_threshold_voice():
+    # Mostly 150 Hz with a 0.2 s 330 Hz excursion (~2% of frames < 3% gate):
+    # no modification at all.
+    voice = tone(150, 10.0, amp=0.4)
+    t = np.arange(int(0.2 * SR)) / SR
+    i0 = 5 * SR
+    voice[i0:i0 + len(t)] = 0.4 * np.sin(2 * np.pi * 330 * t)
     out, events = harmonic.add_octave_harmonic(voice, SR)
     assert events == []
+    assert np.allclose(out, voice)

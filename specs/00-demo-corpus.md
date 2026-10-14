@@ -87,8 +87,9 @@ eligible ONLY if both are clear in the US:
 * **[COR-S-003]** Mix fixtures at known SNRs (e.g. voice+music at 0 dB and
   −5 dB voice-relative; voice+CC0 noise at 5 dB) with deterministic seeds.
   Include: (a) music-bed fixture for `AUD-B-004`; (b) noise fixture for
-  `AUD-B-003` DeepFilterNet path; (c) 220–440 Hz-dominant voice material
-  (adult narration fundamentals fall here; see `COR-AC-002`).
+  `AUD-B-003` DeepFilterNet path; (c) voice material with >3% of frames
+  carrying periodic `f0` in 220–440 Hz, so the `AUD-B-005` whole-voice
+  trigger fires (adult narration fundamentals fall here; see `COR-AC-002`).
 * **[COR-S-004]** Provenance: every clip ships with `provenance.json`
   `{clip_id, voice_src{url,license}, music_or_noise_src{url,license},
   mix_snr_db, seed, f0_range_hz}` plus a human-readable `ATTRIBUTION.md`.

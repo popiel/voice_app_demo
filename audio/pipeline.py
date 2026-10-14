@@ -146,11 +146,11 @@ def process_job(job_id: str, cfg: PipelineConfig | None = None) -> dict:
         bg_proc, att_events = rebalance.attenuate_background(
             voice, bg, cfg.sample_rate, cfg.n_fft, cfg.hop, cfg.db_margin,
             cfg.ramp_s, np.array(vmask))
-        # --- AUD-B-005 harmonic.
+        # --- AUD-B-005 harmonic (voice-level trigger, whole-voice application).
         voice_proc, harm_events = harmonic.add_octave_harmonic(
             voice, cfg.sample_rate, cfg.n_fft, cfg.hop, cfg.band_lo_hz,
-            cfg.band_hi_hz, cfg.harmonic_ratio, cfg.band_dominance,
-            np.array(vmask))
+            cfg.band_hi_hz, cfg.harmonic_ratio,
+            trigger_fraction=cfg.trigger_fraction)
         # --- AUD-B-006 remix + encode.
         mix = remix.remix(voice_proc, bg_proc, cfg.peak_limit)
         if abs(len(mix) / cfg.sample_rate - duration_s) > 0.05:
