@@ -50,3 +50,23 @@ nul
 
 # AI session continuation
 /continue.sh
+
+# Python development
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.venv/
+venv/
+.env/
+*.egg-info/
+build/
+dist/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime website data (SQLite DB, staged uploads, processed audio)
+storage/
