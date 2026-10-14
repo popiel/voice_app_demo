@@ -2,10 +2,10 @@
 
 - session id: `ses_ec85a018effeMVz5NYF8AUJbtV`
 - started: 2026-10-13 16:43:07 (1791934987889)
-- updated: 2026-10-13 16:51:51 (1791935511263)
+- updated: 2026-10-13 16:52:27 (1791935547086)
 - directory: `C:\Users\tapop\Documents\src\voice_app_demo`
 - agent/model: build / muse-spark-1.3-contributor-free (opencode)
-- tokens: input=70936 output=11385 reasoning=3120 cache_read=910511 cache_write=0
+- tokens: input=73395 output=12355 reasoning=3197 cache_read=1179989 cache_write=0
 - cost: 0
 
 ---
@@ -1274,7 +1274,143 @@ Edit applied successfully.
 
 ## Assistant (2026-10-13 16:51:51)
 
-### Tool `bash` (running)
+### Tool `bash` (completed)
 
 - command: python extract_ai_chat_logs.py 2>&1; echo "EXIT:$?"; ls sessions/
 - workdir: C:\Users\tapop\Documents\src\voice_app_demo
+
+```
+wrote: C:\Users\tapop\Documents\src\voice_app_demo\sessions\20261013-164307_ses_ec85a018effeMVz5NYF8AUJbtV.md
+done: 1 written, 0 skipped, 0 failed (of 1 sessions)
+EXIT:0
+20261013-164307_ses_ec85a018effeMVz5NYF8AUJbtV.md
+```
+
+> File changes applied (patch part `prt_137ae13fa001o4NDtoHiWaK6O9`).
+
+## Assistant (2026-10-13 16:51:57)
+
+### Tool `bash` (completed)
+
+- command: python extract_ai_chat_logs.py 2>&1; echo "EXIT:$?"; echo "===CROSS-DIR (max 1)==="; python extract_ai_chat_logs.py --dir C:/Users/tapop/Documents/src/nested_dev --out-dir C:/Users/tapop/Documents/src/voice_app_demo/sessions_nested_test --max-count 1 2>&1; echo "EXIT:$?"; ls C:/Users/tapop/Documents/src/voice_app_demo/sessions_nested_test/
+- workdir: C:\Users\tapop\Documents\src\voice_app_demo
+
+```
+skip (exists): C:\Users\tapop\Documents\src\voice_app_demo\sessions\20261013-164307_ses_ec85a018effeMVz5NYF8AUJbtV.md
+done: 0 written, 1 skipped, 0 failed (of 1 sessions)
+EXIT:0
+===CROSS-DIR (max 1)===
+wrote: C:/Users/tapop/Documents/src/voice_app_demo/sessions_nested_test\20261010-150839_ses_ed82393b3ffeZlq7NUaDF9vohq.md
+done: 1 written, 0 skipped, 0 failed (of 1 sessions)
+EXIT:0
+20261010-150839_ses_ed82393b3ffeZlq7NUaDF9vohq.md
+```
+
+> File changes applied (patch part `prt_137ae2fbe0019493KT3hDOVeQQ`).
+
+## Assistant (2026-10-13 16:52:04)
+
+### Tool `bash` (completed)
+
+- command: rm -rf C:/Users/tapop/Documents/src/voice_app_demo/sessions_nested_test && echo CLEANED; PYTHONIOENCODING=utf-8 python3 -c "import pathlib; p=sorted(pathlib.Path('sessions').glob('*.md'))[0]; t=p.read_text(encoding='utf-8'); print(t[:1200])"; echo "==="; git status --short
+- workdir: C:\Users\tapop\Documents\src\voice_app_demo
+
+```
+CLEANED
+# Extract OpenCode session chat logs script plan
+
+- session id: `ses_ec85a018effeMVz5NYF8AUJbtV`
+- started: 2026-10-13 16:43:07 (1791934987889)
+- updated: 2026-10-13 16:51:51 (1791935511263)
+- directory: `C:\Users\tapop\Documents\src\voice_app_demo`
+- agent/model: build / muse-spark-1.3-contributor-free (opencode)
+- tokens: input=70936 output=11385 reasoning=3120 cache_read=910511 cache_write=0
+- cost: 0
+
+---
+
+## User (2026-10-13 16:43:07)
+
+Plan to build me a script for extracting the session chat log from whatever records opencode keeps for a session.  The script should by default process _all_ sessions that were run within the current directory, and output the chat logs to a `sessions/` subdirectory, with filenames keyed by the timestamp when the session started and the session id.
+
+## Assistant (2026-10-13 16:43:07)
+
+Planning your session log extractor — mapping where opencode keeps its records.
+
+### Tool `read` (completed)
+
+- filePath: C:\Users\tapop\Documents\src\voice_app_demo
+
+```
+<path>C:\Users\tapop\Documents\src\voice_app_demo</path>
+<type>directory</type>
+<entries>
+.git/
+.gitignore
+README.md
+
+(3 entries)
+</entries>
+```
+
+## Assistant (2026-10-13 16:43:11)
+
+### Tool `bash`
+===
+?? __pycache__/
+?? extract_ai_chat_logs.py
+?? sessions/
+```
+
+> File changes applied (patch part `prt_137ae55eb001cFHueMOLp1bQc7`).
+
+## Assistant (2026-10-13 16:52:14)
+
+### Tool `bash` (completed)
+
+- command: rm -rf __pycache__ && git status --short
+- workdir: C:\Users\tapop\Documents\src\voice_app_demo
+
+```
+?? extract_ai_chat_logs.py
+?? sessions/
+```
+
+> File changes applied (patch part `prt_137ae6ca2001BY2K87gGI2Gy54`).
+
+## Assistant (2026-10-13 16:52:20)
+
+### Tool `todowrite` (completed)
+
+```
+[
+  {
+    "content": "Write extract_ai_chat_logs.py",
+    "status": "completed",
+    "priority": "high"
+  },
+  {
+    "content": "Verify: help, extraction run, idempotency, filtering",
+    "status": "completed",
+    "priority": "high"
+  }
+]
+```
+
+## Assistant (2026-10-13 16:52:22)
+
+Done. `extract_ai_chat_logs.py` is built and verified (stdlib-only Python, CLI-based, no SQLite).
+
+**How it works:**
+- Discovers sessions via `opencode session list --format json`, run with cwd set to the target dir (listing is cwd-scoped — confirmed: 1 session here, 13 in `nested_dev`).
+- Exports each via `opencode export <id>` and renders Markdown: header (title, id, start/update times, agent/model, tokens/cost), then chronological `## User/Assistant (time)` sections with verbatim text plus `### Tool name (status)` summaries (key inputs + output truncated to `--max-output`, default 2000 chars). Step markers skipped; patches/compactions noted briefly.
+- Default output: `sessions/YYYYMMDD-HHMMSS_<session-id>.md`, e.g. `sessions/20261013-164307_ses_ec85a018effeMVz5NYF8AUJbtV.md`.
+
+**Verified:**
+- `python extract_ai_chat_logs.py` → 1 file written; re-run → `skip (exists)`, idempotent (use `--overwrite` to refresh).
+- `--dir <other-project> --out-dir ... --max-count 1` → correctly exports that dir's session (test dir cleaned up).
+- `py_compile` passes.
+
+**Two bugs found and fixed during verification:** CLI info lines on stderr broke naive JSON parsing (now stdout-only + `raw_decode`), and Windows cp1252 subprocess decoding crashed on transcript bytes (now forced UTF-8 with `errors="replace"`).
+
+Untracked in git: `extract_ai_chat_logs.py` and `sessions/` — commit whenever you're ready.
